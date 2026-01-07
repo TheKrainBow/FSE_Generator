@@ -3,12 +3,12 @@ from PyQt6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
     QLabel, QListWidget, QPushButton, QFileDialog
 )
-from PyQt6.QtGui import QPixmap, QImage, QPainter, QPen, QColor, QFont
+from PyQt6.QtGui import QPixmap, QImage, QPainter, QPen, QColor, QFont, QBrush
 from PyQt6.QtCore import Qt, QTimer, QRectF
 
 
 class LayoutEditor(QMainWindow):
-    def __init__(self, pdf_path):
+    def __init__(self, pdf_path, layout_path=None):
         super().__init__()
         self.setWindowTitle("PDF Layout Editor")
         self.pdf_path = pdf_path
@@ -34,19 +34,26 @@ class LayoutEditor(QMainWindow):
             {"id": "aprem_m1",             "label": "Aprem: Part 1 (minute)",          "preview_text": "00"},
             {"id": "aprem_h2",             "label": "Aprem: Part 2 (heure)",           "preview_text": "17"},
             {"id": "aprem_m2",             "label": "Aprem: Part 2 (minute)",          "preview_text": "00"},
-            {"id": "premier_nom_etudiant", "label": "Premier nom d'Etudiant",          "preview_text": "DURAND Bob"},
+            {"id": "premier_nom_etudiant", "label": "Étudiants",                       "preview_text": "DURAND Bob"},
             {"id": "nom_surveillant",      "label": "Nom du surveillant",              "preview_text": "DUPONT Jean"},
             {"id": "pagination",      "label": "Pagination",              "preview_text": "1/2"},
             {"id": "date",      "label": "Date",              "preview_text": "18/02/2025"},
         ]
 
-        # Store normalized positions (percent coords, 0..1)
-        # px / py = -1 means "not set yet"
+        # Store normalized box positions (percent coords, 0..1)
+        # px / py / pw / ph = -1 means "not set yet"
         self.positions = {
-            f["id"]: {"px": -1.0, "py": -1.0} for f in self.fields
+            f["id"]: {"px": -1.0, "py": -1.0, "pw": -1.0, "ph": -1.0} for f in self.fields
         }
 
         self.selected_field_id = None
+        self.drag_start = None
+        self.drag_current = None
+        self.drag_mode = None
+        self.drag_anchor = None
+        self.drag_original = None
+        self.drag_edge = None
+        self.field_index = {f["id"]: i for i, f in enumerate(self.fields)}
 
         # Resize debounce
         self.resize_timer = QTimer()
@@ -56,6 +63,9 @@ class LayoutEditor(QMainWindow):
         # Cached render state
         self.current_scale = 1.0
         self.current_pdfpix_qpixmap = None  # pixmap of PDF page only (no overlay)
+
+        if layout_path:
+            self.load_layout(layout_path)
 
         self.build_ui()
 
@@ -71,7 +81,7 @@ class LayoutEditor(QMainWindow):
         self.list = QListWidget()
         for f in self.fields:
             self.list.addItem(f["label"])
-        self.list.currentTextChanged.connect(self.select_field_by_label)
+        self.list.currentRowChanged.connect(self.select_field_by_index)
 
         self.save_btn = QPushButton("Save Layout YAML")
         self.save_btn.clicked.connect(self.save_layout)
@@ -84,7 +94,10 @@ class LayoutEditor(QMainWindow):
         self.label = QLabel()
         self.label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.label.setScaledContents(False)
-        self.label.mousePressEvent = self.mouse_click
+        self.label.setMouseTracking(True)
+        self.label.mousePressEvent = self.mouse_press
+        self.label.mouseMoveEvent = self.mouse_move
+        self.label.mouseReleaseEvent = self.mouse_release
 
         # Initial render
         self.refresh_pixmap()
@@ -94,14 +107,52 @@ class LayoutEditor(QMainWindow):
         self.setCentralWidget(container)
 
     # ---------------------------
-    # Map from list label -> field id
+    # Load existing layout YAML
+    # ---------------------------
+    def load_layout(self, layout_path):
+        try:
+            with open(layout_path, "r", encoding="utf-8") as fh:
+                data = yaml.safe_load(fh) or {}
+        except Exception as exc:
+            print(f"Failed to load layout: {exc}")
+            return
+
+        for f in self.fields:
+            fid = f["id"]
+            if fid not in data:
+                continue
+            entry = data.get(fid) or {}
+            px = entry.get("x_percent", -1.0)
+            py = entry.get("y_percent", -1.0)
+            pw = entry.get("w_percent", -1.0)
+            ph = entry.get("h_percent", -1.0)
+
+            # Backward compat: old layouts only had a point, not a box.
+            if pw < 0 or ph < 0:
+                pw, ph = 0.05, 0.02
+
+            self.positions[fid]["px"] = px
+            self.positions[fid]["py"] = py
+            self.positions[fid]["pw"] = pw
+            self.positions[fid]["ph"] = ph
+
+    # ---------------------------
+    # Map from list row -> field id
     # ---------------------------
     def select_field_by_label(self, chosen_label: str):
-        for f in self.fields:
+        for idx, f in enumerate(self.fields):
             if f["label"] == chosen_label:
-                self.selected_field_id = f["id"]
+                self.list.setCurrentRow(idx)
                 return
         self.selected_field_id = None
+        self.refresh_pixmap()
+
+    def select_field_by_index(self, row: int):
+        if row < 0 or row >= len(self.fields):
+            self.selected_field_id = None
+        else:
+            self.selected_field_id = self.fields[row]["id"]
+        self.refresh_pixmap()
 
     # ---------------------------
     # Render the underlying PDF page into a pixmap
@@ -176,20 +227,64 @@ class LayoutEditor(QMainWindow):
             fid = f["id"]
             txt = f["preview_text"]
             pos = self.positions[fid]
-            if pos["px"] < 0 or pos["py"] < 0:
+            if pos["px"] < 0 or pos["py"] < 0 or pos["pw"] < 0 or pos["ph"] < 0:
                 continue
 
             # compute pixel position from normalized %
             x_px = pos["px"] * pm_w
             y_px = pos["py"] * pm_h
+            w_px = pos["pw"] * pm_w
+            h_px = pos["ph"] * pm_h
 
-            lines = txt.split("\n")
-            for i, line in enumerate(lines):
-                painter.drawText(int(x_px), int(y_px + i * 14), line)
+            if fid == self.selected_field_id:
+                painter.setPen(QPen(QColor(0, 120, 255), 2))
+            else:
+                painter.setPen(QPen(QColor(255, 0, 0), 1))
 
-            # crosshair
-            painter.drawLine(int(x_px) - 3, int(y_px), int(x_px) + 3, int(y_px))
-            painter.drawLine(int(x_px), int(y_px) - 3, int(x_px), int(y_px) + 3)
+            text_rect = QRectF(x_px, y_px, w_px, h_px)
+            painter.save()
+            painter.setClipRect(text_rect)
+            if fid == "premier_nom_etudiant":
+                rows = 7
+                row_h = h_px / rows if rows > 0 else h_px
+                for i in range(rows):
+                    row_rect = QRectF(x_px, y_px + i * row_h, w_px, row_h)
+                    painter.drawText(
+                        row_rect,
+                        Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter,
+                        txt,
+                    )
+            else:
+                if fid in ("nom_surveillant", "commentaire", "duree_heures", "duree_jours",
+                           "matin_h1", "matin_m1", "matin_h2", "matin_m2",
+                           "aprem_h1", "aprem_m1", "aprem_h2", "aprem_m2"):
+                    align = Qt.AlignmentFlag.AlignCenter
+                elif fid == "date":
+                    align = Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
+                else:
+                    align = Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter
+                painter.drawText(
+                    text_rect,
+                    align | Qt.TextFlag.TextWordWrap,
+                    txt,
+                )
+            painter.restore()
+
+            # box outline
+            painter.drawRect(int(x_px), int(y_px), int(w_px), int(h_px))
+
+        # draw active drag box
+        if self.drag_start and self.drag_current:
+            pen = QPen(QColor(0, 120, 255), 1, Qt.PenStyle.DashLine)
+            painter.setPen(pen)
+            painter.setBrush(QBrush(QColor(0, 120, 255, 30)))
+            x0, y0 = self.drag_start
+            x1, y1 = self.drag_current
+            left = min(x0, x1)
+            top = min(y0, y1)
+            width = abs(x1 - x0)
+            height = abs(y1 - y0)
+            painter.drawRect(QRectF(left, top, width, height))
 
         painter.end()
         return pm
@@ -216,18 +311,101 @@ class LayoutEditor(QMainWindow):
         return super().resizeEvent(event)
 
     # ---------------------------
-    # Handle click -> store normalized % coords
-    #
-    # Steps:
-    # 1. Figure out where inside the QLabel the pixmap is drawn (draw_rect).
-    # 2. Get click position relative to that draw_rect.
-    # 3. Convert to % of pixmap width/height.
-    # 4. Store into self.positions[field_id].
-    # 5. Redraw overlay so text appears where you clicked.
-    # ---------------------------
-    def mouse_click(self, event):
-        if self.selected_field_id is None:
+    def clamp_to_draw_rect(self, x, y, draw_rect):
+        x = max(draw_rect.left(), min(x, draw_rect.right()))
+        y = max(draw_rect.top(), min(y, draw_rect.bottom()))
+        return x, y
+
+    def is_inside_draw_rect(self, x, y, draw_rect):
+        return (x >= draw_rect.left() and x <= draw_rect.right() and
+                y >= draw_rect.top() and y <= draw_rect.bottom())
+
+    def get_box_pixels(self, fid):
+        pos = self.positions[fid]
+        if pos["px"] < 0 or pos["py"] < 0 or pos["pw"] < 0 or pos["ph"] < 0:
+            return None
+        pm_w = self.current_pdfpix_qpixmap.width()
+        pm_h = self.current_pdfpix_qpixmap.height()
+        x_px = pos["px"] * pm_w
+        y_px = pos["py"] * pm_h
+        w_px = pos["pw"] * pm_w
+        h_px = pos["ph"] * pm_h
+        return x_px, y_px, w_px, h_px
+
+    def hit_test_edge(self, x, y, rect, tol=6):
+        left, top, width, height = rect
+        right = left + width
+        bottom = top + height
+        near_left = abs(x - left) <= tol
+        near_right = abs(x - right) <= tol
+        near_top = abs(y - top) <= tol
+        near_bottom = abs(y - bottom) <= tol
+        inside = (x >= left and x <= right and y >= top and y <= bottom)
+
+        if near_left and near_top:
+            return "nw"
+        if near_right and near_top:
+            return "ne"
+        if near_left and near_bottom:
+            return "sw"
+        if near_right and near_bottom:
+            return "se"
+        if near_left and inside:
+            return "w"
+        if near_right and inside:
+            return "e"
+        if near_top and inside:
+            return "n"
+        if near_bottom and inside:
+            return "s"
+        if inside:
+            return "move"
+        return None
+
+    def update_cursor(self, local_x, local_y):
+        if not self.current_pdfpix_qpixmap:
             return
+        fid = self.find_box_at(local_x, local_y)
+        if not fid:
+            self.label.setCursor(Qt.CursorShape.CrossCursor)
+            return
+        rect = self.get_box_pixels(fid)
+        edge = self.hit_test_edge(local_x, local_y, rect)
+        if edge == "move":
+            self.label.setCursor(Qt.CursorShape.OpenHandCursor)
+        elif edge in ("e", "w"):
+            self.label.setCursor(Qt.CursorShape.SizeHorCursor)
+        elif edge in ("n", "s"):
+            self.label.setCursor(Qt.CursorShape.SizeVerCursor)
+        elif edge in ("ne", "sw"):
+            self.label.setCursor(Qt.CursorShape.SizeBDiagCursor)
+        elif edge in ("nw", "se"):
+            self.label.setCursor(Qt.CursorShape.SizeFDiagCursor)
+        else:
+            self.label.setCursor(Qt.CursorShape.CrossCursor)
+
+    def find_box_at(self, x, y):
+        for f in self.fields:
+            fid = f["id"]
+            rect = self.get_box_pixels(fid)
+            if not rect:
+                continue
+            left, top, width, height = rect
+            right = left + width
+            bottom = top + height
+            if x >= left and x <= right and y >= top and y <= bottom:
+                return fid
+        return None
+
+    def select_field_by_id(self, fid):
+        if fid not in self.field_index:
+            return
+        self.list.setCurrentRow(self.field_index[fid])
+
+    # ---------------------------
+    # Handle drag to define a box
+    # ---------------------------
+    def mouse_press(self, event):
         if not self.current_pdfpix_qpixmap:
             return
 
@@ -237,46 +415,165 @@ class LayoutEditor(QMainWindow):
         draw_rect = self.get_pixmap_draw_rect()
 
         # ignore clicks outside the actual drawn PDF
-        if (click_x < draw_rect.left() or
-            click_x > draw_rect.right() or
-            click_y < draw_rect.top() or
-            click_y > draw_rect.bottom()):
+        if not self.is_inside_draw_rect(click_x, click_y, draw_rect):
             return
 
-        rel_x = click_x - draw_rect.left()
-        rel_y = click_y - draw_rect.top()
+        local_x = click_x - draw_rect.left()
+        local_y = click_y - draw_rect.top()
+        clicked_id = self.find_box_at(local_x, local_y)
+        if clicked_id:
+            self.select_field_by_id(clicked_id)
+            rect = self.get_box_pixels(clicked_id)
+            edge = self.hit_test_edge(local_x, local_y, rect)
+            if edge:
+                self.drag_mode = "resize" if edge != "move" else "move"
+                self.drag_edge = edge
+                self.drag_anchor = (local_x, local_y)
+                self.drag_original = rect
+                self.drag_start = (local_x, local_y)
+                self.drag_current = (local_x, local_y)
+                self.refresh_pixmap()
+                return
+
+        if self.selected_field_id is None:
+            return
+
+        self.drag_mode = "new"
+        self.drag_start = (local_x, local_y)
+        self.drag_current = self.drag_start
+        self.refresh_pixmap()
+
+    def mouse_move(self, event):
+        if not self.drag_start or not self.current_pdfpix_qpixmap:
+            if not self.current_pdfpix_qpixmap:
+                return
+            draw_rect = self.get_pixmap_draw_rect()
+            move_x = event.position().x()
+            move_y = event.position().y()
+            if not self.is_inside_draw_rect(move_x, move_y, draw_rect):
+                self.label.setCursor(Qt.CursorShape.ArrowCursor)
+                return
+            local_x = move_x - draw_rect.left()
+            local_y = move_y - draw_rect.top()
+            self.update_cursor(local_x, local_y)
+            return
+        draw_rect = self.get_pixmap_draw_rect()
+        move_x = event.position().x()
+        move_y = event.position().y()
+        move_x, move_y = self.clamp_to_draw_rect(move_x, move_y, draw_rect)
+        local_x = move_x - draw_rect.left()
+        local_y = move_y - draw_rect.top()
+        self.drag_current = (local_x, local_y)
+
+        if self.drag_mode in ("move", "resize") and self.drag_original:
+            pm_w = self.current_pdfpix_qpixmap.width()
+            pm_h = self.current_pdfpix_qpixmap.height()
+            x0, y0, w0, h0 = self.drag_original
+            min_w = 4
+            min_h = 4
+
+            if self.drag_mode == "move":
+                dx = local_x - self.drag_anchor[0]
+                dy = local_y - self.drag_anchor[1]
+                new_x = max(0, min(x0 + dx, pm_w - w0))
+                new_y = max(0, min(y0 + dy, pm_h - h0))
+                self.positions[self.selected_field_id]["px"] = round(new_x / pm_w, 6)
+                self.positions[self.selected_field_id]["py"] = round(new_y / pm_h, 6)
+                self.refresh_pixmap()
+                return
+
+            left, top, right, bottom = x0, y0, x0 + w0, y0 + h0
+            if "w" in self.drag_edge:
+                left = min(max(0, local_x), right - min_w)
+            if "e" in self.drag_edge:
+                right = max(min(pm_w, local_x), left + min_w)
+            if "n" in self.drag_edge:
+                top = min(max(0, local_y), bottom - min_h)
+            if "s" in self.drag_edge:
+                bottom = max(min(pm_h, local_y), top + min_h)
+
+            new_w = right - left
+            new_h = bottom - top
+            self.positions[self.selected_field_id]["px"] = round(left / pm_w, 6)
+            self.positions[self.selected_field_id]["py"] = round(top / pm_h, 6)
+            self.positions[self.selected_field_id]["pw"] = round(new_w / pm_w, 6)
+            self.positions[self.selected_field_id]["ph"] = round(new_h / pm_h, 6)
+            self.refresh_pixmap()
+            return
+        self.refresh_pixmap()
+
+    def mouse_release(self, event):
+        if self.selected_field_id is None:
+            return
+        if not self.current_pdfpix_qpixmap or not self.drag_start or not self.drag_current:
+            self.drag_start = None
+            self.drag_current = None
+            return
+
+        if self.drag_mode in ("move", "resize"):
+            self.drag_start = None
+            self.drag_current = None
+            self.drag_mode = None
+            self.drag_anchor = None
+            self.drag_original = None
+            self.drag_edge = None
+            self.refresh_pixmap()
+            return
+
+        draw_rect = self.get_pixmap_draw_rect()
+        end_x = event.position().x()
+        end_y = event.position().y()
+        end_x, end_y = self.clamp_to_draw_rect(end_x, end_y, draw_rect)
+        end_pos = (end_x - draw_rect.left(), end_y - draw_rect.top())
+
+        x0, y0 = self.drag_start
+        x1, y1 = end_pos
+        left = min(x0, x1)
+        top = min(y0, y1)
+        width = abs(x1 - x0)
+        height = abs(y1 - y0)
+
+        min_size = 6
+        if width < min_size or height < min_size:
+            self.drag_start = None
+            self.drag_current = None
+            self.drag_mode = None
+            self.drag_anchor = None
+            self.drag_original = None
+            self.drag_edge = None
+            self.refresh_pixmap()
+            return
 
         pm_w = self.current_pdfpix_qpixmap.width()
         pm_h = self.current_pdfpix_qpixmap.height()
 
         # normalize (0..1)
-        px_norm = float(rel_x) / float(pm_w)
-        py_norm = float(rel_y) / float(pm_h)
-
-        # clamp just to be safe numerically
-        if px_norm < 0:
-            px_norm = 0
-        if px_norm > 1:
-            px_norm = 1
-        if py_norm < 0:
-            py_norm = 0
-        if py_norm > 1:
-            py_norm = 1
+        px_norm = float(left) / float(pm_w)
+        py_norm = float(top) / float(pm_h)
+        pw_norm = float(width) / float(pm_w)
+        ph_norm = float(height) / float(pm_h)
 
         self.positions[self.selected_field_id]["px"] = round(px_norm, 6)
         self.positions[self.selected_field_id]["py"] = round(py_norm, 6)
+        self.positions[self.selected_field_id]["pw"] = round(pw_norm, 6)
+        self.positions[self.selected_field_id]["ph"] = round(ph_norm, 6)
 
         self.statusBar().showMessage(
-            f"{self.selected_field_id} -> ({px_norm:.3f}, {py_norm:.3f})"
+            f"{self.selected_field_id} -> ({px_norm:.3f}, {py_norm:.3f}, {pw_norm:.3f}, {ph_norm:.3f})"
         )
 
-        # redraw so we see the preview text snapped in place
+        self.drag_start = None
+        self.drag_current = None
+        self.drag_mode = None
+        self.drag_anchor = None
+        self.drag_original = None
+        self.drag_edge = None
         self.refresh_pixmap()
 
     # ---------------------------
     # Save YAML layout
     #
-    # We only save x_percent / y_percent for each field.
+    # We save x_percent / y_percent / w_percent / h_percent for each field.
     # We do NOT save preview text anymore.
     # ---------------------------
     def save_layout(self):
@@ -287,6 +584,8 @@ class LayoutEditor(QMainWindow):
             out_data[fid] = {
                 "x_percent": pos["px"],
                 "y_percent": pos["py"],
+                "w_percent": pos["pw"],
+                "h_percent": pos["ph"],
             }
 
         out_path, _ = QFileDialog.getSaveFileName(
@@ -303,10 +602,11 @@ class LayoutEditor(QMainWindow):
 # ---------------------------
 if __name__ == "__main__":
     if len(sys.argv) < 2:
-        print("Usage: python layout_editor.py myfile.pdf")
+        print("Usage: python layout_editor.py myfile.pdf [layout.yml]")
         sys.exit(1)
 
     app = QApplication(sys.argv)
-    w = LayoutEditor(sys.argv[1])
+    layout_path = sys.argv[2] if len(sys.argv) > 2 else None
+    w = LayoutEditor(sys.argv[1], layout_path)
     w.showMaximized()
     sys.exit(app.exec())

@@ -1,50 +1,34 @@
-# FSE Generator / Générateur FSE
+# FSE Generator
 
-## 🇬🇧 Overview
+## Overview
 
 This project automates attendance sheet generation for FSE forms.
 
 It does two main things:
-1. **Layout editor (Python GUI)** – lets you visually place all text zones on top of a scanned attendance sheet and produces a `layout.yml` with coordinates.
-2. **PDF generator (Go)** – fills the sheet for all attendees and produces final, ready-to-print PDFs.
+1. **PDF generator (Go)** – fills the sheet for all attendees and produces ready‑to‑print PDFs.
+2. **Layout editor (Python GUI)** – draw text boxes on top of a scanned attendance sheet and save a `layout.yml` with box coordinates.
 
 You can generate attendee lists from:
-- the 42 Intra API (`event_id`), or
-- a local CSV file (`csv_path`).
+- the 42 Intra API (`event_id` or `exam_id`), or
+- a local CSV file (`csv_path` or legacy `CSVPath`).
 
-All positions are resolution-independent, so once you've mapped a form once, you can reuse it forever 👍
-
-
----
-
-## 🇫🇷 Aperçu
-
-Ce projet génère automatiquement des feuilles d’émargement (présence/signature) pour des événements de formation.
-
-Il fait deux choses :
-1. **Éditeur de layout (interface Python)** – permet de cliquer sur un scan PDF de la feuille et de placer chaque zone de texte. Il génère un `layout.yml`.
-2. **Générateur PDF (programme Go)** – remplit la feuille pour chaque participant et génère des PDF finaux imprimables.
-
-La liste des participants peut venir :
-- de l’API Intra 42 (`event_id`), ou
-- d’un CSV local (`csv_path`).
-
-Toutes les coordonnées sont en pourcentage, donc le placement est indépendant de la résolution ou du scan du document.
+All positions are stored as percentages, so placement is resolution‑independent.
 
 ---
 
-## 🇬🇧 Requirements / Dependencies
+## Requirements / Dependencies
 
-### 1. Go
+### Go
 - Used to generate the final PDFs.
-- You need a recent Go toolchain (1.20+ recommended).
+- Requires Go 1.20+.
 - Go dependencies:
   - `github.com/jung-kurt/gofpdf`
+  - `github.com/jung-kurt/gofpdf/contrib/gofpdi`
   - `github.com/TheKrainBow/go-api`
   - `gopkg.in/yaml.v3`
 
-### 2. Python
-- Used for the interactive layout editor (`layout_editor.py`).
+### Python (optional)
+- Used only if you want to modify the page layout (`layout_editor.py`).
 - Requires Python 3.10+.
 - Python dependencies:
   - `PyQt6`
@@ -58,91 +42,181 @@ python3 -m pip install --user PyQt6 PyMuPDF pyyaml
 
 ---
 
-## 🇫🇷 Dépendances requises
+## Go Tool (most users)
 
-### 1. Go
-- Utilisé pour générer les PDF finaux.
-- Nécessite Go 1.20+.
-- Dépendances Go :
-  - `github.com/jung-kurt/gofpdf`
-  - `github.com/TheKrainBow/go-api`
-  - `gopkg.in/yaml.v3`
+### 1) Pick a config
+Examples are in `configs/`:
+- `configs/event_config-example.yml`
+- `configs/exam_config-example.yml`
+- `configs/csv_config-example.yml`
 
-### 2. Python
-- Utilisé pour l’éditeur graphique (`layout_editor.py`).
-- Nécessite Python 3.10+.
-- Dépendances Python :
-  - `PyQt6`
-  - `PyMuPDF` (fitz)
-  - `pyyaml`
+### 2) Fill the config
+Common fields:
+- `pdf_template_image`: background PDF/image
+- `pageLayout`: path to your `layout.yml`
+- `output_folder`: output directory
+- `font`: font settings (`name`, `path`, `size`)
+- `landscape`: true/false
 
-Installation :
+Data source (choose one):
+- **Event**: `event_id` + `42API` block
+- **Exam**: `exam_id` + `42API` block
+- **Custom**: `csv_path` (or legacy `CSVPath`)
+
+Text fields (all optional; API defaults apply in event/exam):
+- `theme_objet`, `intitule`, `fonds_concerne`
+- `event_hour_duration`, `event_days_duration`
+- `morning_start_at_hour`, `morning_start_at_minute`, `morning_end_at_hour`, `morning_end_at_minute`
+- `afternoon_start_at_hour`, `afternoon_start_at_minute`, `afternoon_end_at_hour`, `afternoon_end_at_minute`
+- `comment`, `teacher_first_name`, `teacher_last_name`, `date_string`
+
+CSV formats supported:
+- `FirstName,LastName`
+- `Id;Login;Email;First name;Last name;Campus name;Cursus`
+
+### 3) Run the generator
 ```bash
-python3 -m pip install --user PyQt6 PyMuPDF pyyaml
+go run main.go configs/event_config-example.yml
+```
+
+Outputs:
+- `sheet_XX.pdf` per page
+- Combined PDF:
+  - `event_{eventID}_{eventDate}.pdf`
+  - `exam_{examID}_{examDate}.pdf`
+  - `custom_{date_string}.pdf` or `custom.pdf`
+
+### Using the prebuilt binaries
+
+Linux (amd64):
+```bash
+./bin/fse_generator-linux-amd64 configs/event_config-example.yml
+```
+
+Linux (arm64):
+```bash
+./bin/fse_generator-linux-arm64 configs/event_config-example.yml
+```
+
+macOS (amd64):
+```bash
+./bin/fse_generator-macos-amd64 configs/event_config-example.yml
+```
+
+macOS (arm64):
+```bash
+./bin/fse_generator-macos-arm64 configs/event_config-example.yml
+```
+
+Windows (amd64):
+```bat
+bin\\fse_generator-windows-amd64.exe configs\\event_config-example.yml
+```
+
+Windows (arm64):
+```bat
+bin\\fse_generator-windows-arm64.exe configs\\event_config-example.yml
 ```
 
 ---
 
-## 🇬🇧 How the workflow works
+## Layout Editor (optional)
+
+Use this only if you want to change the page layout.
+
+### 1) Run the editor
+```bash
+python3 layout_editor.py EmptyFSE.pdf
+```
+Optional: preload an existing layout:
+```bash
+python3 layout_editor.py EmptyFSE.pdf layout.yml
+```
+
+### 2) Draw boxes
+- Drag to create a box for each field.
+- Click a box to select it; drag to move; drag edges/corners to resize.
+- Saved `layout.yml` contains `x_percent`, `y_percent`, `w_percent`, `h_percent`.
+
+### 3) Use the new layout
+Point your config `pageLayout` to the saved `layout.yml`.
 
 1. **Scan your blank attendance sheet** as `EmptyFSE.pdf`.
 2. **Run the Python layout editor**:
    ```bash
    python3 layout_editor.py EmptyFSE.pdf
    ```
-   Click each field name, then click where it should appear on the form.
-   Save → `layout.yml`.
-3. **Create a config.yml** describing:
-   - The input file, layout, and output folder.
-   - Either a `csv_path` or a `42API` section + `event_id`.
-   (See Configs/config.yml for an example)
-4. **Generate the filled PDFs**:
+   Optional: preload an existing layout:
    ```bash
-   go run main.go config.yml
+   python3 layout_editor.py EmptyFSE.pdf layout.yml
    ```
-   PDFs are written to your `output_folder`.
+   Drag to draw boxes. You can move and resize existing boxes.
+3. **Create a config file** describing:
+   - The input source (`event_id`, `exam_id`, or `csv_path`/`CSVPath`)
+   - Layout path, output folder, and texts
+   - Background PDF/image and font
+   Examples are in `configs/`.
+4. **Generate the PDFs**:
+   ```bash
+   go run main.go configs/event_config-example.yml
+   ```
+
+Output is written to your `output_folder`, including:
+- `sheet_XX.pdf` per page
+- A combined PDF:
+  - `event_{eventID}_{eventDate}.pdf`
+  - `exam_{examID}_{examDate}.pdf`
+  - `custom_{date_string}.pdf` or `custom.pdf`
 
 ---
 
-## 🇫🇷 Utilisation complète
+## Data Sources
 
-1. **Scannez la feuille d’émargement** → `EmptyFSE.pdf`
-2. **Lancez l’éditeur Python :**
-   ```bash
-   python3 layout_editor.py EmptyFSE.pdf
-   ```
-   Sélectionnez chaque champ, cliquez sur sa position, puis enregistrez `layout.yml`.
-3. **Créez un `config.yml`** :
-   - Indiquez `event_id` ou `csv_path`
-   - Ajoutez les horaires, intitulé, formateur, etc.
-   (Voir Configs/config.yml pour un example)
-4. **Générez les PDF :**
-   ```bash
-   go run main.go config.yml
-   ```
-   Les fichiers finaux seront dans `output_folder`.
+### Event mode
+Config:
+- `event_id` + `42API`
+
+Behavior:
+- Fetches event info from `/events/{event_id}` and attendees from `/events/{event_id}/events_users`.
+- Fills date, duration, times, theme/comment defaults.
+- Any fields set in config override the API data.
+
+### Exam mode
+Config:
+- `exam_id` + `42API`
+
+Behavior:
+- Fetches exam info from `/exams/{exam_id}` and attendees from `/exams/{exam_id}/exams_users`.
+- Same defaults as events, but no morning/afternoon split; the start time decides which side is used.
+- Any fields set in config override the API data.
+
+### Custom mode
+Config:
+- `csv_path` or legacy `CSVPath`
+
+Behavior:
+- Uses CSV only for the attendee list.
+- All display fields come from the config; empty fields are not printed.
 
 ---
 
-## 🗂️ Required files / Fichiers nécessaires
+## Required Files
 
 | File | Description |
-|------|--------------|
-| `layout_editor.py` | Python GUI to define coordinates |
+|------|-------------|
+| `layout_editor.py` | Python GUI to define box coordinates |
 | `main.go` | PDF generator |
-| `config.yml` | Configuration (data source, texts, paths) |
-| `layout.yml` | Generated coordinates from Python tool |
-| `EmptyFSE.pdf` / `.jpg` | Background attendance form |
-| `.ttf` font | e.g., DejaVuSans.ttf for UTF‑8 text |
-| `students.csv` *(optional)* | Two columns: `FirstName,LastName` |
+| `configs/*.yml` | Configuration examples |
+| `layout.yml` | Generated box layout |
+| `EmptyFSE.pdf` / `.jpg` | Background form |
+| `.ttf` font | e.g., `DejaVuSans.ttf` for UTF‑8 text |
+| `students.csv` *(optional)* | Attendee list |
 
 ---
 
-## 🏁 TL;DR
+## TL;DR
 
-1. Run `layout_editor.py` to define coordinates → `layout.yml`
-2. Fill out `config.yml`
-3. Run `go run main.go config.yml`
-4. Output PDFs appear in `out/`
-
-That’s it 🚀
+1. Fill out a config in `configs/`
+2. Run `go run main.go configs/event_config-example.yml`
+3. Output PDFs appear in `out/`
+4. Use `layout_editor.py` only if you need to modify the layout

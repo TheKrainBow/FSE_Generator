@@ -1,0 +1,90 @@
+theme_origin:
+  x_percent: 0.136271
+  y_percent: 0.209149
+  w_percent: 0.236537
+  h_percent: 0.017766
+intitule:
+  x_percent: 0.096072
+  y_percent: 0.231688
+  w_percent: 0.356178
+  h_percent: 0.017649
+fonds_concerne:
+  x_percent: 0.13407
+  y_percent: 0.250153
+  w_percent: 0.178994
+  h_percent: 0.019427
+commentaire:
+  x_percent: 0.68323
+  y_percent: 0.213146
+  w_percent: 0.274265
+  h_percent: 0.08284
+duree_heures:
+  x_percent: 0.087036
+  y_percent: 0.330026
+  w_percent: 0.033087
+  h_percent: 0.02066
+duree_jours:
+  x_percent: 0.276788
+  y_percent: 0.32985
+  w_percent: 0.038433
+  h_percent: 0.019057
+matin_h1:
+  x_percent: 0.321695
+  y_percent: 0.359551
+  w_percent: 0.074168
+  h_percent: 0.02
+matin_m1:
+  x_percent: 0.408588
+  y_percent: 0.361001
+  w_percent: 0.074985
+  h_percent: 0.02
+matin_h2:
+  x_percent: 0.498208
+  y_percent: 0.360256
+  w_percent: 0.068233
+  h_percent: 0.02
+matin_m2:
+  x_percent: 0.582034
+  y_percent: 0.360012
+  w_percent: 0.069086
+  h_percent: 0.02
+aprem_h1:
+  x_percent: 0.322351
+  y_percent: 0.388264
+  w_percent: 0.073167
+  h_percent: 0.02
+aprem_m1:
+  x_percent: 0.408346
+  y_percent: 0.388264
+  w_percent: 0.074202
+  h_percent: 0.02
+aprem_h2:
+  x_percent: 0.499552
+  y_percent: 0.388264
+  w_percent: 0.067953
+  h_percent: 0.02
+aprem_m2:
+  x_percent: 0.582647
+  y_percent: 0.388264
+  w_percent: 0.069323
+  h_percent: 0.02
+premier_nom_etudiant:
+  x_percent: 0.03247
+  y_percent: 0.491497
+  w_percent: 0.175245
+  h_percent: 0.268271
+nom_surveillant:
+  x_percent: 0.0324
+  y_percent: 0.854471
+  w_percent: 0.175398
+  h_percent: 0.044188
+pagination:
+  x_percent: 0.684178
+  y_percent: 0.300678
+  w_percent: 0.05
+  h_percent: 0.02
+date:
+  x_percent: 0.891174
+  y_percent: 0.301675
+  w_percent: 0.067275
+  h_percent: 0.02
