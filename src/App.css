@@ -278,6 +278,23 @@ textarea::placeholder {
   color: var(--text-primary);
 }
 
+.csv-upload input[type='file']::file-selector-button,
+.csv-upload input[type='file']::-webkit-file-upload-button {
+  background: var(--button-dark-gray);
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  padding: 0.35rem 0.9rem;
+  font-weight: 600;
+  cursor: pointer;
+  margin-right: 0.8rem;
+}
+
+.csv-upload input[type='file']::file-selector-button:hover,
+.csv-upload input[type='file']::-webkit-file-upload-button:hover {
+  background: var(--button-blue);
+}
+
 .csv-mapping {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
