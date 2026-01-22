@@ -1,222 +1,102 @@
-# FSE Generator
+## FSE Generator
 
-## Overview
+An internal tool for producing printable FSE (Feuille de Suivi d'Émargement) sheets. It lets you
+prefill a participant list, control all shared event fields, preview the layout directly on top of a
+PDF template and generate a ready-to-print PDF that respects the official format.
 
-This project automates attendance sheet generation for FSE forms.
-
-It does two main things:
-1. **PDF generator (Go)** – fills the sheet for all attendees and produces ready‑to‑print PDFs.
-2. **Layout editor (Python GUI)** – draw text boxes on top of a scanned attendance sheet and save a `layout.yml` with box coordinates.
-
-You can generate attendee lists from:
-- the 42 Intra API (`event_id` or `exam_id`), or
-- a local CSV file (`csv_path` or legacy `CSVPath`).
-
-All positions are stored as percentages, so placement is resolution‑independent.
-
----
-
-## Requirements / Dependencies
-
-### Go
-- Used to generate the final PDFs.
-- Requires Go 1.20+.
-- Go dependencies:
-  - `github.com/jung-kurt/gofpdf`
-  - `github.com/jung-kurt/gofpdf/contrib/gofpdi`
-  - `github.com/TheKrainBow/go-api`
-  - `gopkg.in/yaml.v3`
-
-### Python (optional)
-- Used only if you want to modify the page layout (`layout_editor.py`).
-- Requires Python 3.10+.
-- Python dependencies:
-  - `PyQt6`
-  - `PyMuPDF`
-  - `pyyaml`
-
-Install them:
-```bash
-python3 -m pip install --user PyQt6 PyMuPDF pyyaml
-```
+### Highlights
+- CSV import plus native support for 42 Intra events/exams (via OAuth2 client credentials).
+- Side-by-side editing experience: shared fields, participant list and live PDF preview stay in sync.
+- Configurable pagination controls (extra blank pages, hide total pages) and signature column helpers
+  that automatically cross unused cells.
+- One-click browser printing that renders via `pdf-lib`, ensuring every field sits exactly inside the
+  coordinates declared in `src/layout/pageLayout.ts`.
+- Optional template override: drop a PDF next to `public/EmptyFSE.pdf` and point the UI to it.
 
 ---
 
-## Go Tool (most users)
+## Getting started
 
-### 1) Pick a config
-Examples are in `configs/`:
-- `configs/event_config-example.yml`
-- `configs/exam_config-example.yml`
-- `configs/csv_config-example.yml`
+### Requirements
+- Node.js 20+ and npm 10+.
+- Optional: 42 API credentials if you want event/exam prefill (create an OAuth app in intranet).
 
-### 2) Fill the config
-Common fields:
-- `pdf_template_image`: background PDF/image
-- `pageLayout`: path to your `layout.yml`
-- `output_folder`: output directory
-- `font`: font settings (`name`, `path`, `size`)
-- `landscape`: true/false
-
-Data source (choose one):
-- **Event**: `event_id` + `42API` block
-- **Exam**: `exam_id` + `42API` block
-- **Custom**: `csv_path` (or legacy `CSVPath`)
-
-Text fields (all optional; API defaults apply in event/exam):
-- `theme_objet`, `intitule`, `fonds_concerne`
-- `event_hour_duration`, `event_days_duration`
-- `morning_start_at_hour`, `morning_start_at_minute`, `morning_end_at_hour`, `morning_end_at_minute`
-- `afternoon_start_at_hour`, `afternoon_start_at_minute`, `afternoon_end_at_hour`, `afternoon_end_at_minute`
-- `comment`, `teacher_first_name`, `teacher_last_name`, `date_string`
-
-CSV formats supported:
-- `FirstName,LastName`
-- `Id;Login;Email;First name;Last name;Campus name;Cursus`
-
-### 3) Run the generator
+### Installation
 ```bash
-go run main.go configs/event_config-example.yml
+npm install
 ```
 
-Outputs:
-- `sheet_XX.pdf` per page
-- Combined PDF:
-  - `event_{eventID}_{eventDate}.pdf`
-  - `exam_{examID}_{examDate}.pdf`
-  - `custom_{date_string}.pdf` or `custom.pdf`
-
-### Using the prebuilt binaries
-
-Linux (amd64):
+### Development server
 ```bash
-./bin/fse_generator-linux-amd64 configs/event_config-example.yml
+npm run dev
 ```
+Vite hosts the app on `http://localhost:5173`. Participant updates, CSV imports, shared-field edits,
+etc. re-render live inside the preview pane.
 
-Linux (arm64):
+### Building for production
 ```bash
-./bin/fse_generator-linux-arm64 configs/event_config-example.yml
+npm run build
 ```
-
-macOS (amd64):
-```bash
-./bin/fse_generator-macos-amd64 configs/event_config-example.yml
-```
-
-macOS (arm64):
-```bash
-./bin/fse_generator-macos-arm64 configs/event_config-example.yml
-```
-
-Windows (amd64):
-```bat
-bin\\fse_generator-windows-amd64.exe configs\\event_config-example.yml
-```
-
-Windows (arm64):
-```bat
-bin\\fse_generator-windows-arm64.exe configs\\event_config-example.yml
-```
+Artifacts land in `dist/`. Serve with any static host or use the provided `Dockerfile`/
+`docker-compose.yml` (`docker compose up --build`) to run it behind Nginx on port `4173`.
 
 ---
 
-## Layout Editor (optional)
+## Prefill options
 
-Use this only if you want to change the page layout.
+### CSV import
+1. Select **CSV** in the Prefill bar.
+2. Upload a file with headers (at least Nom & Prénom columns).
+3. Map the columns in the UI and import. Only non-empty rows are kept.
 
-### 1) Run the editor
-```bash
-python3 layout_editor.py EmptyFSE.pdf
-```
-Optional: preload an existing layout:
-```bash
-python3 layout_editor.py EmptyFSE.pdf layout.yml
-```
-
-### 2) Draw boxes
-- Drag to create a box for each field.
-- Click a box to select it; drag to move; drag edges/corners to resize.
-- Saved `layout.yml` contains `x_percent`, `y_percent`, `w_percent`, `h_percent`.
-
-### 3) Use the new layout
-Point your config `pageLayout` to the saved `layout.yml`.
-
-1. **Scan your blank attendance sheet** as `EmptyFSE.pdf`.
-2. **Run the Python layout editor**:
-   ```bash
-   python3 layout_editor.py EmptyFSE.pdf
+### 42 event/exam
+1. Configure your credentials in `.env.local` (or `.env`) at the project root:
+   ```ini
+   VITE_FORTY_TWO_UID=xxxxx
+   VITE_FORTY_TWO_SECRET=xxxxx
+   VITE_FORTY_TWO_SCOPE=public
+   VITE_FORTY_TWO_TOKEN_URL=https://api.intra.42.fr/oauth/token
+   VITE_FORTY_TWO_API_BASE=https://api.intra.42.fr/v2
    ```
-   Optional: preload an existing layout:
-   ```bash
-   python3 layout_editor.py EmptyFSE.pdf layout.yml
-   ```
-   Drag to draw boxes. You can move and resize existing boxes.
-3. **Create a config file** describing:
-   - The input source (`event_id`, `exam_id`, or `csv_path`/`CSVPath`)
-   - Layout path, output folder, and texts
-   - Background PDF/image and font
-   Examples are in `configs/`.
-4. **Generate the PDFs**:
-   ```bash
-   go run main.go configs/event_config-example.yml
-   ```
+2. Select **Event** or **Exam**, enter the numeric ID and click **Prefill**.
+3. The tool fetches the participant list plus best-effort defaults (durations, slots, comments).
 
-Output is written to your `output_folder`, including:
-- `sheet_XX.pdf` per page
-- A combined PDF:
-  - `event_{eventID}_{eventDate}.pdf`
-  - `exam_{examID}_{examDate}.pdf`
-  - `custom_{date_string}.pdf` or `custom.pdf`
+Each prefill resets the form (you will be prompted if unsaved data exists). Use the **Reset to
+empty** button to wipe everything manually.
 
 ---
 
-## Data Sources
+## Shared fields & layout
 
-### Event mode
-Config:
-- `event_id` + `42API`
+- Shared fields live in `src/constants/fields.ts` and drive the UI form as well as field bindings to
+  layout keys (see `SHARED_FIELD_BINDINGS`).
+- The actual box coordinates reside in `src/layout/pageLayout.ts`. Every value is expressed as a
+  percentage of the PDF page and is consumed both by the live preview and by the `pdf-lib` exporter.
+- Participants are chunked via `src/lib/pages.ts` with 7 rows per page; extra blank pages ensure you
+  can keep printing even if no participants are entered.
+- The **empty page** option lets you add blank signature grids for last-minute attendees, while the
+  *hide total pagination* toggle hides the `/total` part of `index/total`.
+- To replace the PDF background, upload a file next to `public/EmptyFSE.pdf` and paste its relative
+  path into the Template field inside the UI.
 
-Behavior:
-- Fetches event info from `/events/{event_id}` and attendees from `/events/{event_id}/events_users`.
-- Fills date, duration, times, theme/comment defaults.
-- Any fields set in config override the API data.
-
-### Exam mode
-Config:
-- `exam_id` + `42API`
-
-Behavior:
-- Fetches exam info from `/exams/{exam_id}` and attendees from `/exams/{exam_id}/exams_users`.
-- Same defaults as events, but no morning/afternoon split; the start time decides which side is used.
-- Any fields set in config override the API data.
-
-### Custom mode
-Config:
-- `csv_path` or legacy `CSVPath`
-
-Behavior:
-- Uses CSV only for the attendee list.
-- All display fields come from the config; empty fields are not printed.
+If you need to update the layout or create a new template, use the interactive helper located in
+`layoutGenerator/`. Follow the quick guide in `layoutGenerator/README.md` to generate a YAML file of
+percentage-based boxes, then copy the resulting values into `src/layout/pageLayout.ts`.
 
 ---
 
-## Required Files
+## Repository map
 
-| File | Description |
-|------|-------------|
-| `layout_editor.py` | Python GUI to define box coordinates |
-| `main.go` | PDF generator |
-| `configs/*.yml` | Configuration examples |
-| `layout.yml` | Generated box layout |
-| `EmptyFSE.pdf` / `.jpg` | Background form |
-| `.ttf` font | e.g., `DejaVuSans.ttf` for UTF‑8 text |
-| `students.csv` *(optional)* | Attendee list |
+- `src/components/` – Prefill bar, shared-field forms, PDF previewer and printing controls.
+- `src/lib/` – PDF rendering (`pdf.ts`), signature grid logic, name helpers, prefill builders.
+- `src/layout/pageLayout.ts` – canonical bounding boxes for every field/signature column.
+- `layoutGenerator/` – PyQt tool to visually adjust those boxes.
+- `public/` – Default `EmptyFSE.pdf` template and embedded fonts.
 
 ---
 
-## TL;DR
+## Layout generator companion
 
-1. Fill out a config in `configs/`
-2. Run `go run main.go configs/event_config-example.yml`
-3. Output PDFs appear in `out/`
-4. Use `layout_editor.py` only if you need to modify the layout
+The Python helper living under `layoutGenerator/` allows you to drag-and-drop bounding boxes on top
+of the official PDF. It outputs normalized coordinates that you can paste into `pageLayout.ts`.
+See `layoutGenerator/README.md` for installation and usage details.
