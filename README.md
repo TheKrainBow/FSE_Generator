@@ -28,17 +28,43 @@ npm install
 
 ### Development server
 ```bash
+npm run server
 npm run dev
 ```
-Vite hosts the app on `http://localhost:5173`. Participant updates, CSV imports, shared-field edits,
-etc. re-render live inside the preview pane.
+`npm run server` boots the Express API proxy on `http://localhost:4173` (cache logs appear in the console). Leave that running and start `npm run dev` so Vite proxies `/api` to the backend while you edit the UI.
 
 ### Building for production
 ```bash
 npm run build
 ```
-Artifacts land in `dist/`. Serve with any static host or use the provided `Dockerfile`/
-`docker-compose.yml` (`docker compose up --build`) to run it behind Nginx on port `4173`.
+Artifacts land in `dist/`.
+
+### Container stack
+`docker compose up --build` now builds three images:
+
+1. **frontend** – runs from `Dockerfile.frontend` and serves the Vite-built `dist/` via Nginx.
+2. **backend** – runs `server/index.js` from `Dockerfile.backend`, caches 42 tokens, and proxies `/api/42/*` to `FORTY_TWO_API_BASE`.
+3. **nginx** – loads `nginx.conf` and routes `/` to the `frontend` service and `/api/` to the `backend` service, exposing everything on port `4173`.
+
+Set the usual credentials in `.env.local` (or `.env`) before touching the backend:
+```ini
+FORTY_TWO_UID=xxxxx
+FORTY_TWO_SECRET=xxxxx
+FORTY_TWO_SCOPE=public          # optional
+FORTY_TWO_TOKEN_URL=https://api.intra.42.fr/oauth/token
+FORTY_TWO_API_BASE=https://api.intra.42.fr/v2
+FSE_API_BASE=/api/42
+VITE_FSE_API_BASE=/api/42
+VITE_TEMPLATE_PATH=/EmptyFSE.pdf
+```
+
+### Token proxy server
+The Express app in `server/index.js` caches 42 access tokens and returns them at `/api/token` so the
+browser never touches the client credentials. It also serves the production bundle when `dist/` exists.
+Keep `FORTY_TWO_UID`, `FORTY_TWO_SECRET`, `FORTY_TWO_SCOPE` (optional), and `FORTY_TWO_TOKEN_URL`
+configured via `.env` or `.env.local` before running the server.
+The frontend calls `/api/42/*` by default, so those requests also go through the token proxy and
+share the same origin; override `VITE_FORTY_TWO_API_BASE` only if you need to point at a different host.
 
 ---
 
@@ -52,11 +78,14 @@ Artifacts land in `dist/`. Serve with any static host or use the provided `Docke
 ### 42 event/exam
 1. Configure your credentials in `.env.local` (or `.env`) at the project root:
    ```ini
-   VITE_FORTY_TWO_UID=xxxxx
-   VITE_FORTY_TWO_SECRET=xxxxx
-   VITE_FORTY_TWO_SCOPE=public
-   VITE_FORTY_TWO_TOKEN_URL=https://api.intra.42.fr/oauth/token
-   VITE_FORTY_TWO_API_BASE=https://api.intra.42.fr/v2
+   FORTY_TWO_UID=xxxxx
+   FORTY_TWO_SECRET=xxxxx
+   FORTY_TWO_SCOPE=public          # optional
+   FORTY_TWO_TOKEN_URL=https://api.intra.42.fr/oauth/token
+   FORTY_TWO_API_BASE=https://api.intra.42.fr/v2
+   FSE_API_BASE=/api/42
+   VITE_FSE_API_BASE=/api/42
+   VITE_TEMPLATE_PATH=/EmptyFSE.pdf
    ```
 2. Select **Event** or **Exam**, enter the numeric ID and click **Prefill**.
 3. The tool fetches the participant list plus best-effort defaults (durations, slots, comments).

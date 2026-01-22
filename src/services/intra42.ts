@@ -1,15 +1,6 @@
 import type { PrefillPayload, PrefillUserInput, SharedFields } from '../types'
 
-const UID = import.meta.env.VITE_FORTY_TWO_UID || ''
-const SECRET = import.meta.env.VITE_FORTY_TWO_SECRET || ''
-const TOKEN_URL = import.meta.env.VITE_FORTY_TWO_TOKEN_URL || 'https://api.intra.42.fr/oauth/token'
-const API_BASE = import.meta.env.VITE_FORTY_TWO_API_BASE || 'https://api.intra.42.fr/v2'
-const SCOPE = import.meta.env.VITE_FORTY_TWO_SCOPE || 'public'
-
-interface TokenResponse {
-  access_token: string
-  expires_in: number
-}
+const API_BASE = import.meta.env.VITE_FSE_API_BASE || '/api/42'
 
 interface APIItem {
   id: number
@@ -26,51 +17,9 @@ interface APIUserWrapper {
   }
 }
 
-let tokenCache: { token: string; expiresAt: number } | null = null
-
-function assertCredentials() {
-  if (!UID || !SECRET) {
-    throw new Error("Identifiants API 42 manquants. Configurez le fichier .env à la racine.")
-  }
-}
-
-async function getToken(): Promise<string> {
-  assertCredentials()
-  const now = Date.now() / 1000
-  if (tokenCache && tokenCache.expiresAt > now + 30) {
-    return tokenCache.token
-  }
-  const body = new URLSearchParams({
-    grant_type: 'client_credentials',
-    client_id: UID,
-    client_secret: SECRET,
-    scope: SCOPE
-  })
-  const response = await fetch(TOKEN_URL, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    body
-  })
-  if (!response.ok) {
-    const message = await response.text()
-    throw new Error(`Impossible d'obtenir un jeton 42 : ${message}`)
-  }
-  const data = (await response.json()) as TokenResponse
-  tokenCache = { token: data.access_token, expiresAt: now + data.expires_in }
-  return tokenCache.token
-}
-
 async function request42(path: string) {
   const url = `${API_BASE}${path}`
-  const makeRequest = async () => {
-    const token = await getToken()
-    return fetch(url, { headers: { Authorization: `Bearer ${token}` } })
-  }
-  let response = await makeRequest()
-  if (response.status === 401) {
-    tokenCache = null
-    response = await makeRequest()
-  }
+  const response = await fetch(url)
   if (!response.ok) {
     const details = await response.text()
     throw new Error(`Erreur API 42 ${response.status} : ${details}`)
@@ -90,7 +39,9 @@ async function fetchCollection<T>(path: string): Promise<T[]> {
   let totalPages = Infinity
   while (page <= totalPages) {
     const delimiter = path.includes('?') ? '&' : '?'
-    const response = await request42(`${path}${delimiter}per_page=${perPage}&page=${page}`)
+    const response = await request42(
+      `${path}${delimiter}page[size]=${perPage}&page[number]=${page}`
+    )
     const chunk = (await response.json()) as T[]
     if (!Array.isArray(chunk) || chunk.length === 0) {
       break
