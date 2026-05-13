@@ -83,15 +83,29 @@ function sortUsers(users: UserRecord[]): UserRecord[] {
   return users
     .slice()
     .sort((a, b) => {
-      const lastA = (a.lastName || '').trim().toLowerCase()
-      const lastB = (b.lastName || '').trim().toLowerCase()
-      if (lastA !== lastB) {
-        return lastA.localeCompare(lastB)
+      const loginA = (a.login || '').trim().toLowerCase()
+      const loginB = (b.login || '').trim().toLowerCase()
+      const hasLoginA = Boolean(loginA)
+      const hasLoginB = Boolean(loginB)
+
+      if (hasLoginA && hasLoginB) {
+        const loginDiff = loginA.localeCompare(loginB)
+        if (loginDiff !== 0) {
+          return loginDiff
+        }
+      } else if (hasLoginA !== hasLoginB) {
+        return hasLoginA ? -1 : 1
       }
+
       const firstA = (a.firstName || '').trim().toLowerCase()
       const firstB = (b.firstName || '').trim().toLowerCase()
       if (firstA !== firstB) {
         return firstA.localeCompare(firstB)
+      }
+      const lastA = (a.lastName || '').trim().toLowerCase()
+      const lastB = (b.lastName || '').trim().toLowerCase()
+      if (lastA !== lastB) {
+        return lastA.localeCompare(lastB)
       }
       return a.id.localeCompare(b.id)
     })

@@ -33,10 +33,14 @@ const AFTERNOON_FIELDS: (keyof SharedFields)[] = [
   'afternoonEndAtMinute'
 ]
 
-function hasSlotValue(fields: SharedFields, keys: (keyof SharedFields)[]) {
-  return keys.some((key) => {
+function hasCompleteSlot(fields: SharedFields, keys: (keyof SharedFields)[]) {
+  return keys.every((key) => {
     const value = fields[key]
-    return typeof value === 'string' ? value.trim() : Boolean(value)
+    if (typeof value !== 'string') {
+      return Boolean(value)
+    }
+    const trimmed = value.trim()
+    return trimmed !== '' && trimmed !== '-1'
   })
 }
 
@@ -50,8 +54,8 @@ function parseDayCount(fields: SharedFields) {
 
 export function getSignatureColumnStates(sharedFields: SharedFields): boolean[] {
   const dayCount = parseDayCount(sharedFields)
-  const morningEnabled = hasSlotValue(sharedFields, MORNING_FIELDS)
-  const afternoonEnabled = hasSlotValue(sharedFields, AFTERNOON_FIELDS)
+  const morningEnabled = hasCompleteSlot(sharedFields, MORNING_FIELDS)
+  const afternoonEnabled = hasCompleteSlot(sharedFields, AFTERNOON_FIELDS)
   const states: boolean[] = []
 
   for (let day = 0; day < SIGNATURE_DAY_COUNT; day += 1) {
@@ -72,5 +76,23 @@ export function getSignatureColumnLayouts(pageSize: { width: number; height: num
     const yFromTop = entry.yPercent * pageSize.height
     const y = pageSize.height - yFromTop - height
     return { x, y, width, height }
+  })
+}
+
+export function getSurveillantCellLayouts(pageSize: { width: number; height: number }) {
+  const surveillantRow = pageLayout.nom_surveillant
+  if (!surveillantRow) {
+    return SIGNATURE_KEYS.map(() => null)
+  }
+
+  const rowHeight = surveillantRow.hPercent * pageSize.height
+  const rowTop = surveillantRow.yPercent * pageSize.height
+
+  return SIGNATURE_KEYS.map((key) => {
+    const entry = pageLayout[key]
+    if (!entry) return null
+    const width = entry.wPercent * pageSize.width
+    const x = entry.xPercent * pageSize.width
+    return { x, top: rowTop, width, height: rowHeight }
   })
 }

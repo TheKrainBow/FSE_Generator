@@ -1,6 +1,7 @@
 import type { PrefillPayload, PrefillUserInput, SharedFields } from '../types'
 
 const API_BASE = import.meta.env.VITE_FSE_API_BASE || '/api/42'
+const DEFAULT_CAMPUS_ID = Number(import.meta.env.VITE_CAMPUS_ID || '41') || 41
 
 interface APIItem {
   id: number
@@ -12,9 +13,17 @@ interface APIItem {
 
 interface APIUserWrapper {
   user: {
+    login?: string
     first_name: string
     last_name: string
   }
+}
+
+export interface CalendarItem {
+  id: number
+  name: string
+  beginAt: string
+  kind: 'event' | 'exam'
 }
 
 async function request42(path: string) {
@@ -67,7 +76,8 @@ async function fetchCollection<T>(path: string): Promise<T[]> {
 function formatName(input: PrefillUserInput): PrefillUserInput {
   return {
     firstName: (input.firstName || '').trim(),
-    lastName: (input.lastName || '').trim()
+    lastName: (input.lastName || '').trim(),
+    login: input.login?.trim() || undefined
   }
 }
 
@@ -85,6 +95,19 @@ function toParis(date: Date): Date {
   } catch {
     return date
   }
+}
+
+function monthBounds(date: Date) {
+  const current = new Date(date.getTime())
+  const start = new Date(current.getFullYear(), current.getMonth(), 1, 0, 0, 0, 0)
+  const end = new Date(current.getFullYear(), current.getMonth() + 1, 0, 23, 59, 59, 999)
+  return { start, end }
+}
+
+function buildMonthQuery(date: Date) {
+  const { start, end } = monthBounds(date)
+  const range = `${encodeURIComponent(start.toISOString())},${encodeURIComponent(end.toISOString())}`
+  return `sort=begin_at&range[begin_at]=${range}`
 }
 
 function durationHours(start: Date, end: Date) {
@@ -201,7 +224,11 @@ function applyDefaults(kind: 'event' | 'exam', item: APIItem): Partial<SharedFie
 
 function buildPayload(kind: 'event' | 'exam', id: string, item: APIItem, attendees: APIUserWrapper[]): PrefillPayload {
   const users = attendees.map((entry) =>
-    formatName({ firstName: entry.user.first_name, lastName: entry.user.last_name })
+    formatName({
+      firstName: entry.user.first_name,
+      lastName: entry.user.last_name,
+      login: entry.user.login
+    })
   )
   return {
     source: kind,
@@ -221,4 +248,47 @@ export async function fetchPrefill(kind: 'event' | 'exam', id: string): Promise<
     fetchCollection<APIUserWrapper>(`/${resource}/${id}/${kind === 'event' ? 'events_users' : 'exams_users'}`)
   ])
   return buildPayload(kind, id, item, attendees)
+}
+
+export async function fetchCampusCalendarMonth(
+  campusId: number = DEFAULT_CAMPUS_ID,
+  month: Date = new Date()
+): Promise<CalendarItem[]> {
+  if (!Number.isFinite(campusId) || campusId <= 0) {
+    throw new Error('CAMPUS_ID doit être un entier positif.')
+  }
+
+  const query = buildMonthQuery(month)
+  const [events, exams] = await Promise.all([
+    fetchCollection<APIItem>(`/campus/${campusId}/events?${query}`),
+    fetchCollection<APIItem>(`/campus/${campusId}/exams?${query}`)
+  ])
+
+  return [
+    ...events.map((item) => ({
+      id: item.id,
+      name: item.name,
+      beginAt: item.begin_at,
+      kind: 'event' as const
+    })),
+    ...exams.map((item) => ({
+      id: item.id,
+      name: item.name,
+      beginAt: item.begin_at,
+      kind: 'exam' as const
+    }))
+  ].sort((left, right) => {
+    const beginDiff = new Date(left.beginAt).getTime() - new Date(right.beginAt).getTime()
+    if (beginDiff !== 0) {
+      return beginDiff
+    }
+    if (left.kind !== right.kind) {
+      return left.kind.localeCompare(right.kind)
+    }
+    return left.id - right.id
+  })
+}
+
+export function getDefaultCampusId() {
+  return DEFAULT_CAMPUS_ID
 }

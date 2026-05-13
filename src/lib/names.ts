@@ -1,17 +1,17 @@
 import type { PrefillUserInput, UserRecord } from '../types'
 
 export function formatPersonName(first: string, last: string): string {
+  const firstTrimmed = (first ?? '').trim()
   const lastUpper = (last ?? '').trim().toUpperCase()
-  const firstLower = (first ?? '').trim().toLowerCase()
-  if (!firstLower) {
+  if (!firstTrimmed) {
     return lastUpper
   }
-  const chars = Array.from(firstLower)
+  const chars = Array.from(firstTrimmed.toLowerCase())
   if (chars.length > 0) {
     chars[0] = chars[0].toUpperCase()
   }
   const formattedFirst = chars.join('')
-  return [lastUpper, formattedFirst].filter(Boolean).join(' ')
+  return [formattedFirst, lastUpper].filter(Boolean).join(' ')
 }
 
 function makeId(): string {
@@ -25,6 +25,7 @@ export function createUserRecord(input: PrefillUserInput): UserRecord {
   return {
     id: makeId(),
     firstName: input.firstName.trim(),
-    lastName: input.lastName.trim()
+    lastName: input.lastName.trim(),
+    login: input.login?.trim() || undefined
   }
 }

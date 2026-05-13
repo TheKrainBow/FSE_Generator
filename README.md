@@ -6,6 +6,7 @@ PDF template and generate a ready-to-print PDF that respects the official format
 
 ### Highlights
 - CSV import plus native support for 42 Intra events/exams (via OAuth2 client credentials).
+- A combined monthly calendar for 42 events/exams with cached background refresh and direct item selection.
 - Side-by-side editing experience: shared fields, participant list and live PDF preview stay in sync.
 - Configurable pagination controls (extra blank pages, hide total pages) and signature column helpers
   that automatically cross unused cells.
@@ -44,7 +45,7 @@ Artifacts land in `dist/`.
 
 1. **frontend** – runs from `Dockerfile.frontend` and serves the Vite-built `dist/` via Nginx.
 2. **backend** – runs `server/index.js` from `Dockerfile.backend`, caches 42 tokens, and proxies `/api/42/*` to `FORTY_TWO_API_BASE`.
-3. **nginx** – loads `nginx.conf` and routes `/` to the `frontend` service and `/api/` to the `backend` service, exposing everything on port `4173`.
+3. **nginx** – loads `nginx.conf` and routes `/` to the `frontend` service and `/api/` to the `backend` service.
 
 Set the usual credentials in `.env.local` (or `.env`) before touching the backend:
 ```ini
@@ -54,6 +55,8 @@ FORTY_TWO_SCOPE=public          # optional
 FORTY_TWO_TOKEN_URL=https://api.intra.42.fr/oauth/token
 FORTY_TWO_API_BASE=https://api.intra.42.fr/v2
 FSE_API_BASE=/api/42
+CAMPUS_ID=41
+VITE_SURVEILLANTS=Sarah VILLAIN|Florian MESSINA
 VITE_FSE_API_BASE=/api/42
 VITE_TEMPLATE_PATH=/EmptyFSE.pdf
 ```
@@ -84,11 +87,15 @@ share the same origin; override `VITE_FORTY_TWO_API_BASE` only if you need to po
    FORTY_TWO_TOKEN_URL=https://api.intra.42.fr/oauth/token
    FORTY_TWO_API_BASE=https://api.intra.42.fr/v2
    FSE_API_BASE=/api/42
+   CAMPUS_ID=41
+   VITE_CAMPUS_ID=41
+   VITE_SURVEILLANTS=Sarah VILLAIN|Florian MESSINA
    VITE_FSE_API_BASE=/api/42
    VITE_TEMPLATE_PATH=/EmptyFSE.pdf
    ```
-2. Select **Event** or **Exam**, enter the numeric ID and click **Prefill**.
+2. Select **Event / exam** to open the monthly calendar, then click the item you want.
 3. The tool fetches the participant list plus best-effort defaults (durations, slots, comments).
+4. The calendar stays responsive with a 1 minute TTL: if a refresh is running, the previous month data stays visible with a "nouveau fetch en cours" status.
 
 Each prefill resets the form (you will be prompted if unsaved data exists). Use the **Reset to
 empty** button to wipe everything manually.

@@ -3,7 +3,11 @@ import fontkit from '@pdf-lib/fontkit'
 import { pageLayout } from '../layout/pageLayout'
 import type { DerivedPage, LayoutKey, SharedFields } from '../types'
 import { NAMES_PER_PAGE, pageNames } from './pages'
-import { getSignatureColumnStates, getSignatureColumnLayouts } from './signatureGrid'
+import {
+  getSignatureColumnStates,
+  getSignatureColumnLayouts,
+  getSurveillantCellLayouts
+} from './signatureGrid'
 import { resolveFieldValue } from './fieldValues'
 
 const DEFAULT_FONT_SIZE = 11
@@ -172,7 +176,6 @@ export async function generateFsePdf({ sharedFields, pages }: PdfBuildOptions) {
       'aprem_m1',
       'aprem_h2',
       'aprem_m2',
-      'nom_surveillant',
       'date',
       'pagination'
     ]
@@ -221,7 +224,27 @@ export async function generateFsePdf({ sharedFields, pages }: PdfBuildOptions) {
       })
     }
 
+    const surveillantBox = boxFromLayout('nom_surveillant', { width, height })
+    if (surveillantBox) {
+      const mmRatioX = width / 297
+      const offset = 3 * mmRatioX
+      const teacherText = resolveFieldValue('nom_surveillant', sharedFields, pageInfo)
+      drawTextFit(
+        base,
+        font,
+        teacherText,
+        {
+          x: surveillantBox.x + offset,
+          y: surveillantBox.y,
+          width: surveillantBox.width - offset,
+          height: surveillantBox.height
+        },
+        { align: 'left', wrap: false, minSize: 7 }
+      )
+    }
+
     const signatureColumnsLayout = getSignatureColumnLayouts({ width, height })
+    const surveillantCellLayouts = getSurveillantCellLayouts({ width, height })
     if (sharedFields.disableCrossedCells) {
       continue
     }
@@ -247,6 +270,22 @@ export async function generateFsePdf({ sharedFields, pages }: PdfBuildOptions) {
           color: rgb(0.4, 0.4, 0.4)
         })
       }
+    })
+
+    surveillantCellLayouts.forEach((layout, columnIdx) => {
+      if (!layout || signatureColumns[columnIdx]) {
+        return
+      }
+      const marginX = layout.width * 0.05
+      const marginY = layout.height * 0.05
+      const cellBottom = height - layout.top - layout.height
+      const cellTop = cellBottom + layout.height
+      base.drawLine({
+        start: { x: layout.x + marginX, y: cellTop - marginY },
+        end: { x: layout.x + layout.width - marginX, y: cellBottom + marginY },
+        thickness: 1,
+        color: rgb(0.4, 0.4, 0.4)
+      })
     })
   }
 

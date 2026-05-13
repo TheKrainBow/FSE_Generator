@@ -16,6 +16,13 @@ export interface FieldSection {
 
 export const FIELD_SECTIONS: FieldSection[] = [
   {
+    title: 'Surveillant & date',
+    fields: [
+      { name: 'teacherFirstName', label: 'Surveillant' },
+      { name: 'dateString', label: 'Date', placeholder: '06/01/2026' }
+    ]
+  },
+  {
     title: 'Informations générales',
     fields: [
       { name: 'themeObjet', label: 'Thème / Objet', placeholder: 'Exam 06/01/2026' },
@@ -53,23 +60,15 @@ export const FIELD_SECTIONS: FieldSection[] = [
       { name: 'afternoonEndAtHour', label: 'Fin heure', type: 'number' },
       { name: 'afternoonEndAtMinute', label: 'Fin minute', type: 'number' }
     ]
-  },
-  {
-    title: 'Surveillant & date',
-    fields: [
-      { name: 'teacherFirstName', label: 'Prénom du surveillant' },
-      { name: 'teacherLastName', label: 'Nom du surveillant' },
-      { name: 'dateString', label: 'Date', placeholder: '06/01/2026' }
-    ]
   }
 ]
 
 export const PAGE_INLINE_FIELDS: FieldDescriptor[] = [
-  FIELD_SECTIONS[0].fields[0],
-  FIELD_SECTIONS[0].fields[1],
-  FIELD_SECTIONS[0].fields[2],
-  FIELD_SECTIONS[0].fields[3],
-  FIELD_SECTIONS[FIELD_SECTIONS.length - 1].fields[2]
+  FIELD_SECTIONS[1].fields[0],
+  FIELD_SECTIONS[1].fields[1],
+  FIELD_SECTIONS[1].fields[2],
+  FIELD_SECTIONS[1].fields[3],
+  FIELD_SECTIONS[0].fields[1]
 ]
 
 export const SHARED_FIELD_BINDINGS: Record<SharedFieldName, string | null> = {

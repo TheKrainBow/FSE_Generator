@@ -1,7 +1,7 @@
 import { useMemo, useState, type ChangeEvent } from 'react'
 import Papa from 'papaparse'
-import type { PrefillPayload, PrefillSource, PrefillUserInput } from '../types'
-import { fetchPrefill } from '../services/intra42'
+import type { PrefillPayload, PrefillUserInput } from '../types'
+import { CampusCalendarModal } from './CampusCalendarModal'
 
 interface PrefillBarProps {
   onPrefill: (payload: PrefillPayload) => void
@@ -9,28 +9,20 @@ interface PrefillBarProps {
   hasExistingData?: boolean
 }
 
-const MODES: PrefillSource[] = ['csv', 'event', 'exam']
 const WARNING_MESSAGE = 'Changer de modèle effacera toutes les données des formulaires.'
 
+type ToolMode = 'csv' | 'calendar'
+
 export function PrefillBar({ onPrefill, onReset, hasExistingData }: PrefillBarProps) {
-  const [mode, setMode] = useState<PrefillSource>('csv')
-  const [identifiers, setIdentifiers] = useState<Record<'event' | 'exam', string>>({ event: '', exam: '' })
-  const [loading, setLoading] = useState(false)
+  const [mode, setMode] = useState<ToolMode>('csv')
   const [error, setError] = useState('')
   const [csvFileName, setCsvFileName] = useState('')
   const [csvRows, setCsvRows] = useState<Record<string, string>[]>([])
   const [csvColumns, setCsvColumns] = useState<string[]>([])
   const [csvSelection, setCsvSelection] = useState<{ firstName?: string; lastName?: string }>({})
+  const [calendarOpen, setCalendarOpen] = useState(false)
 
   const previewRows = useMemo(() => csvRows.slice(0, 5), [csvRows])
-
-  const handleModeChange = (next: PrefillSource) => {
-    if (mode === next) {
-      return
-    }
-    setMode(next)
-    setError('')
-  }
 
   const confirmDestructive = () => {
     if (!hasExistingData) {
@@ -39,29 +31,13 @@ export function PrefillBar({ onPrefill, onReset, hasExistingData }: PrefillBarPr
     return window.confirm(WARNING_MESSAGE)
   }
 
-  const handleLoad = async () => {
-    if (mode === 'csv') {
-      handleCsvImport()
+  const handleModeChange = (next: ToolMode) => {
+    if (mode === next) {
       return
     }
-    if (!confirmDestructive()) {
-      return
-    }
-    const id = identifiers[mode]
-    if (!id?.trim()) {
-      setError('Veuillez saisir un identifiant en premier.')
-      return
-    }
-    try {
-      setLoading(true)
-      setError('')
-      const payload = await fetchPrefill(mode, id.trim())
-      onPrefill(payload)
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Impossible de récupérer les données depuis 42.')
-    } finally {
-      setLoading(false)
-    }
+    setMode(next)
+    setError('')
+    setCalendarOpen(false)
   }
 
   const handleCsvFile = (event: ChangeEvent<HTMLInputElement>) => {
@@ -87,8 +63,8 @@ export function PrefillBar({ onPrefill, onReset, hasExistingData }: PrefillBarPr
               : columns[1] || columns[0]
         }))
       },
-      error: (err) => {
-        setError(err.message || "Impossible d'analyser le CSV.")
+      error: (parseError) => {
+        setError(parseError.message || "Impossible d'analyser le CSV.")
         setCsvRows([])
         setCsvColumns([])
       }
@@ -116,10 +92,9 @@ export function PrefillBar({ onPrefill, onReset, hasExistingData }: PrefillBarPr
       setError('Aucun participant valide trouvé dans le CSV avec les colonnes choisies.')
       return
     }
-    const summary = `Import de ${filtered.length} participant(s) depuis le CSV.`
     const payload: PrefillPayload = {
       source: 'csv',
-      summary,
+      summary: `Import de ${filtered.length} participant(s) depuis le CSV.`,
       users: filtered,
       fields: {}
     }
@@ -127,22 +102,25 @@ export function PrefillBar({ onPrefill, onReset, hasExistingData }: PrefillBarPr
     setError('')
   }
 
-  const idValue = mode === 'event' || mode === 'exam' ? identifiers[mode] : ''
-
   return (
     <div className="prefill-bar">
       <div className="prefill-modes">
-        {MODES.map((option) => (
-          <button
-            key={option}
-            type="button"
-            className={`mode-btn ${mode === option ? 'active' : ''}`}
-            onClick={() => handleModeChange(option)}
-          >
-            {option === 'csv' ? 'CSV' : option === 'event' ? 'Event' : 'Exam'}
-          </button>
-        ))}
+        <button
+          type="button"
+          className={`mode-btn ${mode === 'csv' ? 'active' : ''}`}
+          onClick={() => handleModeChange('csv')}
+        >
+          CSV
+        </button>
+      <button
+        type="button"
+        className={`mode-btn ${mode === 'calendar' ? 'active' : ''}`}
+        onClick={() => handleModeChange('calendar')}
+      >
+          Event / exam
+        </button>
       </div>
+
       {mode === 'csv' && (
         <div className="csv-import">
           <label className="csv-upload">
@@ -213,22 +191,16 @@ export function PrefillBar({ onPrefill, onReset, hasExistingData }: PrefillBarPr
           )}
         </div>
       )}
-      {mode !== 'csv' && (
-        <div className="prefill-inputs">
-          <label>{mode === 'event' ? 'Event ID' : 'Exam ID'}</label>
-          <input
-            type="number"
-            value={idValue}
-            onChange={(event) =>
-              setIdentifiers((prev) => ({ ...prev, [mode]: event.target.value }))
-            }
-            placeholder={mode === 'event' ? '37718' : '12844'}
-          />
-          <button type="button" className="btn" onClick={handleLoad} disabled={loading}>
-            {loading ? 'En cours...' : 'Importer'}
+
+      {mode === 'calendar' && (
+        <div className="calendar-launcher">
+          <p className="hint">Ouvre le calendrier 42 du mois en cours pour choisir un event ou un exam.</p>
+          <button type="button" className="btn primary" onClick={() => setCalendarOpen(true)}>
+            Ouvrir le calendrier
           </button>
         </div>
       )}
+
       <button
         type="button"
         className="btn ghost"
@@ -245,7 +217,15 @@ export function PrefillBar({ onPrefill, onReset, hasExistingData }: PrefillBarPr
       >
         Réinitialiser
       </button>
+
       {error && <div className="error">{error}</div>}
+
+      <CampusCalendarModal
+        open={calendarOpen}
+        onClose={() => setCalendarOpen(false)}
+        onPrefill={onPrefill}
+        hasExistingData={hasExistingData}
+      />
     </div>
   )
 }

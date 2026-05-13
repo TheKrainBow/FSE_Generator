@@ -45,6 +45,10 @@ function App() {
             <div className="details-card-header">
               <h2>Détails FSE</h2>
             </div>
+            <SharedFieldsForm
+              values={state.sharedFields}
+              onChange={(patch) => dispatch({ type: 'update-shared', patch })}
+            />
             <CollapsibleSection title="Participants" badge={state.users.length}>
               <UserListPanel
                 users={state.users}
@@ -54,34 +58,30 @@ function App() {
                 hideHeader
               />
             </CollapsibleSection>
-          <SharedFieldsForm
-            values={state.sharedFields}
-            onChange={(patch) => dispatch({ type: 'update-shared', patch })}
-          />
-          <CollapsibleSection title="Pages vides">
-            <div className="extra-pages">
-              <label>Pages vides</label>
-              <input
-                type="number"
-                min={0}
-                value={state.extraPages}
-                onChange={(event) =>
-                  dispatch({ type: 'set-extra-pages', count: Number(event.target.value) || 0 })
-                }
-              />
-              <label className="checkbox-inline">
+            <CollapsibleSection title="Pages vides">
+              <div className="extra-pages">
+                <label>Pages vides</label>
                 <input
-                  type="checkbox"
-                  checked={state.sharedFields.hideTotalPagination}
+                  type="number"
+                  min={0}
+                  value={state.extraPages}
                   onChange={(event) =>
-                    dispatch({ type: 'update-shared', patch: { hideTotalPagination: event.target.checked } })
+                    dispatch({ type: 'set-extra-pages', count: Number(event.target.value) || 0 })
                   }
                 />
-                Masquer le total dans la pagination
-              </label>
-            </div>
-          </CollapsibleSection>
-        </section>
+                <label className="checkbox-inline">
+                  <input
+                    type="checkbox"
+                    checked={state.sharedFields.hideTotalPagination}
+                    onChange={(event) =>
+                      dispatch({ type: 'update-shared', patch: { hideTotalPagination: event.target.checked } })
+                    }
+                  />
+                  Masquer le total dans la pagination
+                </label>
+              </div>
+            </CollapsibleSection>
+          </section>
         </aside>
         <section className="stage">
           <PrintButton sharedFields={state.sharedFields} pages={pages} />

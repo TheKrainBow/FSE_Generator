@@ -5,6 +5,10 @@ RUN npm ci
 
 FROM node:20-alpine AS build
 WORKDIR /app
+ARG CAMPUS_ID=41
+ARG VITE_SURVEILLANTS
+ENV CAMPUS_ID=${CAMPUS_ID}
+ENV VITE_SURVEILLANTS=${VITE_SURVEILLANTS}
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 RUN npm run build

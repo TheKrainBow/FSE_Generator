@@ -3,7 +3,7 @@ import type { DerivedPage, SharedFields, LayoutKey } from '../types'
 import { pageLayout } from '../layout/pageLayout'
 import { resolveFieldValue } from '../lib/fieldValues'
 import { NAMES_PER_PAGE, pageNames } from '../lib/pages'
-import { getSignatureColumnStates } from '../lib/signatureGrid'
+import { getSignatureColumnStates, getSurveillantCellLayouts } from '../lib/signatureGrid'
 
 const SIGNATURE_KEYS: LayoutKey[] = [
   'signature_col_morning1',
@@ -36,9 +36,23 @@ function areaStyle(key: keyof typeof pageLayout): CSSProperties {
   }
 }
 
+function fitTeacherFontSize(text: string, boxWidth: number) {
+  const trimmed = text.trim()
+  if (!trimmed) {
+    return 11
+  }
+  const effectiveWidth = Math.max(1, boxWidth * 0.92)
+  const estimated = effectiveWidth / (trimmed.length * 0.52)
+  return Math.max(7, Math.min(11, estimated))
+}
+
 export function PageSurface({ page, sharedFields, backgroundUrl, width, height }: PageSurfaceProps) {
   const names = pageNames(page.users)
   const signatureColumns = getSignatureColumnStates(sharedFields)
+  const surveillantCells = getSurveillantCellLayouts({ width, height })
+  const surveillantText = resolveFieldValue('nom_surveillant', sharedFields, page)
+  const surveillantBox = pageLayout.nom_surveillant
+  const teacherFontSize = fitTeacherFontSize(surveillantText, surveillantBox.wPercent * width)
   return (
     <div className="page-surface" style={{ width, height }}>
       {backgroundUrl ? <img src={backgroundUrl} alt="FSE" draggable={false} /> : <div className="page-placeholder" />}
@@ -85,8 +99,11 @@ export function PageSurface({ page, sharedFields, backgroundUrl, width, height }
         <div className="field center" style={areaStyle('aprem_m2')}>
           {resolveFieldValue('aprem_m2', sharedFields, page)}
         </div>
-        <div className="field" style={areaStyle('nom_surveillant')}>
-          {resolveFieldValue('nom_surveillant', sharedFields, page)}
+        <div
+          className="field teacher-name"
+          style={{ ...areaStyle('nom_surveillant'), fontSize: `${teacherFontSize}px` }}
+        >
+          <span>{surveillantText}</span>
         </div>
         <div className="field right" style={areaStyle('date')}>
           {resolveFieldValue('date', sharedFields, page)}
@@ -114,6 +131,33 @@ export function PageSurface({ page, sharedFields, backgroundUrl, width, height }
                       </svg>
                     </div>
                   ))}
+              </div>
+            )
+          })}
+        </div>
+        <div className="signature-surveillant">
+          {SIGNATURE_KEYS.map((key, columnIdx) => {
+            const active = signatureColumns[columnIdx]
+            const layout = surveillantCells[columnIdx]
+            if (!layout) {
+              return null
+            }
+            return (
+              <div
+                key={`surveillant-${key}`}
+                className={`signature-cell surveillant ${active ? 'active' : 'blocked'}`}
+                style={{
+                  left: layout.x,
+                  top: layout.top,
+                  width: layout.width,
+                  height: layout.height
+                }}
+              >
+                {!active && !sharedFields.disableCrossedCells && (
+                  <svg className="signature-line" viewBox="0 0 100 100" preserveAspectRatio="none">
+                    <line x1="5" y1="95" x2="95" y2="5" />
+                  </svg>
+                )}
               </div>
             )
           })}

@@ -93,7 +93,8 @@ export function UserListPanel({ users, onAdd, onRemove, onUpdate, hideHeader }: 
           ) : (
             <div key={user.id} className="user-line">
               <span className="user-name">
-                <span className="user-last">{(user.lastName || 'Nom ?').toUpperCase()}</span> {user.firstName}
+                <span className="user-first">{user.firstName || 'Prénom ?'}</span>{' '}
+                <span className="user-last">{(user.lastName || 'Nom ?').toUpperCase()}</span>
               </span>
               <div className="line-actions">
                 <button type="button" className="icon-btn" onClick={() => startEdit(user)}>

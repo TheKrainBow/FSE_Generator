@@ -52,6 +52,7 @@ export interface SharedFields {
 export interface PrefillUserInput {
   firstName: string
   lastName: string
+  login?: string
 }
 
 export interface PrefillPayload {
